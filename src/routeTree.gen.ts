@@ -10,33 +10,141 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as DailyRouteImport } from './routes/daily'
+import { Route as GoalsRouteImport } from './routes/goals'
+import { Route as HomeRouteImport } from './routes/home'
+import { Route as InsightsRouteImport } from './routes/insights'
+import { Route as MonthlyRouteImport } from './routes/monthly'
+import { Route as ReviewRouteImport } from './routes/review'
+import { Route as WeeklyRouteImport } from './routes/weekly'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CalendarRoute = CalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DailyRoute = DailyRouteImport.update({
+  id: '/daily',
+  path: '/daily',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GoalsRoute = GoalsRouteImport.update({
+  id: '/goals',
+  path: '/goals',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HomeRoute = HomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InsightsRoute = InsightsRouteImport.update({
+  id: '/insights',
+  path: '/insights',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MonthlyRoute = MonthlyRouteImport.update({
+  id: '/monthly',
+  path: '/monthly',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReviewRoute = ReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WeeklyRoute = WeeklyRouteImport.update({
+  id: '/weekly',
+  path: '/weekly',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
+  '/daily': typeof DailyRoute
+  '/goals': typeof GoalsRoute
+  '/home': typeof HomeRoute
+  '/insights': typeof InsightsRoute
+  '/monthly': typeof MonthlyRoute
+  '/review': typeof ReviewRoute
+  '/weekly': typeof WeeklyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
+  '/daily': typeof DailyRoute
+  '/goals': typeof GoalsRoute
+  '/home': typeof HomeRoute
+  '/insights': typeof InsightsRoute
+  '/monthly': typeof MonthlyRoute
+  '/review': typeof ReviewRoute
+  '/weekly': typeof WeeklyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
+  '/daily': typeof DailyRoute
+  '/goals': typeof GoalsRoute
+  '/home': typeof HomeRoute
+  '/insights': typeof InsightsRoute
+  '/monthly': typeof MonthlyRoute
+  '/review': typeof ReviewRoute
+  '/weekly': typeof WeeklyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/calendar'
+    | '/daily'
+    | '/goals'
+    | '/home'
+    | '/insights'
+    | '/monthly'
+    | '/review'
+    | '/weekly'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/calendar'
+    | '/daily'
+    | '/goals'
+    | '/home'
+    | '/insights'
+    | '/monthly'
+    | '/review'
+    | '/weekly'
+  id:
+    | '__root__'
+    | '/'
+    | '/calendar'
+    | '/daily'
+    | '/goals'
+    | '/home'
+    | '/insights'
+    | '/monthly'
+    | '/review'
+    | '/weekly'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CalendarRoute: typeof CalendarRoute
+  DailyRoute: typeof DailyRoute
+  GoalsRoute: typeof GoalsRoute
+  HomeRoute: typeof HomeRoute
+  InsightsRoute: typeof InsightsRoute
+  MonthlyRoute: typeof MonthlyRoute
+  ReviewRoute: typeof ReviewRoute
+  WeeklyRoute: typeof WeeklyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +156,75 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/daily': {
+      id: '/daily'
+      path: '/daily'
+      fullPath: '/daily'
+      preLoaderRoute: typeof DailyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/goals': {
+      id: '/goals'
+      path: '/goals'
+      fullPath: '/goals'
+      preLoaderRoute: typeof GoalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/home': {
+      id: '/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof HomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/insights': {
+      id: '/insights'
+      path: '/insights'
+      fullPath: '/insights'
+      preLoaderRoute: typeof InsightsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/monthly': {
+      id: '/monthly'
+      path: '/monthly'
+      fullPath: '/monthly'
+      preLoaderRoute: typeof MonthlyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/review': {
+      id: '/review'
+      path: '/review'
+      fullPath: '/review'
+      preLoaderRoute: typeof ReviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/weekly': {
+      id: '/weekly'
+      path: '/weekly'
+      fullPath: '/weekly'
+      preLoaderRoute: typeof WeeklyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CalendarRoute: CalendarRoute,
+  DailyRoute: DailyRoute,
+  GoalsRoute: GoalsRoute,
+  HomeRoute: HomeRoute,
+  InsightsRoute: InsightsRoute,
+  MonthlyRoute: MonthlyRoute,
+  ReviewRoute: ReviewRoute,
+  WeeklyRoute: WeeklyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
