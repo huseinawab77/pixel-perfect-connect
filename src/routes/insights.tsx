@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { generateInsights } from "@/lib/awwab/insights";
 import { periodFor, type PeriodKind } from "@/lib/awwab/dates";
+import { useT } from "@/lib/awwab/i18n";
 import { useAppState } from "@/lib/awwab/store";
 import { meta, useToday } from "@/lib/awwab/useToday";
 import { InsightCard } from "@/components/awwab/Performance";
@@ -15,12 +16,13 @@ export const Route = createFileRoute("/insights")({
 function InsightsPage() {
   const today = useToday();
   const state = useAppState();
+  const t = useT();
   const [kind, setKind] = useState<PeriodKind>("week");
-  const insights = useMemo(() => generateInsights(periodFor(kind, today), state.entries, today), [state.entries, today, kind]);
+  const insights = useMemo(() => generateInsights(periodFor(kind, today), state.entries, today, state.habits, t), [state.entries, state.habits, today, kind, t]);
   return (
     <div>
-      <PageHeader eyebrow="Insights" title="Why things look this way" subtitle="What happened, and which behaviours were associated with it. Every line traces back to your data." cat="curious">
-        <Segmented value={kind} onChange={setKind} options={[{ value: "week", label: "This Week" }, { value: "month", label: "This Month" }]} />
+      <PageHeader eyebrow={t("nav.insights")} title={t("ins.title")} subtitle={t("ins.subtitle")} cat="curious">
+        <Segmented value={kind} onChange={setKind} options={[{ value: "week", label: t("seg.week") }, { value: "month", label: t("seg.month") }]} />
       </PageHeader>
       <div className="space-y-3">
         {insights.map((i) => <InsightCard key={i.id} insight={i} showEvidence={i.priority === "primary"} />)}

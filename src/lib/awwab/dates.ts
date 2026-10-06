@@ -1,3 +1,5 @@
+import { locale } from "./i18n";
+
 // Local-date helpers. Dates are stored as YYYY-MM-DD strings in the user's local time.
 
 export const pad = (n: number) => String(n).padStart(2, "0");
@@ -35,7 +37,7 @@ export interface Period {
   label: string;
 }
 
-const fmt = (k: string, o: Intl.DateTimeFormatOptions) => fromKey(k).toLocaleDateString("en-US", o);
+const fmt = (k: string, o: Intl.DateTimeFormatOptions) => fromKey(k).toLocaleDateString(locale(), o);
 
 export function periodFor(kind: PeriodKind, anchor: string): Period {
   if (kind === "week") {

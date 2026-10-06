@@ -4,11 +4,13 @@ import catResting from "@/assets/cat-resting.png";
 import catFocused from "@/assets/cat-focused.png";
 import catCurious from "@/assets/cat-curious.png";
 import type { TrendDir } from "@/lib/awwab/calc";
+import { setLang, useLang, useT } from "@/lib/awwab/i18n";
 
 const CATS = { resting: catResting, focused: catFocused, curious: catCurious };
 
 export function CatIllustration({ mood, className = "", alt }: { mood: keyof typeof CATS; className?: string; alt?: string }) {
-  return <img src={CATS[mood]} alt={alt ?? `A ${mood} cat illustration`} width={816} height={816} className={`select-none ${className}`} draggable={false} />;
+  const t = useT();
+  return <img src={CATS[mood]} alt={alt ?? t("cat.alt")} width={816} height={816} className={`select-none ${className}`} draggable={false} />;
 }
 
 export function PageHeader({ eyebrow, title, subtitle, cat, children }: { eyebrow?: string; title: string; subtitle?: string; cat?: keyof typeof CATS; children?: ReactNode }) {
@@ -36,14 +38,15 @@ export function EmptyState({ title, body, cat = "resting", action }: { title: st
   );
 }
 
-export function TrendChip({ t, suffix }: { t: { diff: number; dir: TrendDir } | null; suffix?: string }) {
-  if (!t) return null;
-  const cls = t.dir === "improving" ? "chip-up" : t.dir === "declining" ? "chip-down" : "chip-flat";
-  const arrow = t.dir === "improving" ? "↑" : t.dir === "declining" ? "↓" : "→";
-  const n = Math.round(t.diff);
+export function TrendChip({ t: tr, suffix }: { t: { diff: number; dir: TrendDir } | null; suffix?: string }) {
+  const t = useT();
+  if (!tr) return null;
+  const cls = tr.dir === "improving" ? "chip-up" : tr.dir === "declining" ? "chip-down" : "chip-flat";
+  const arrow = tr.dir === "improving" ? "↑" : tr.dir === "declining" ? "↓" : "→";
+  const n = Math.round(tr.diff);
   return (
     <span className={`chip ${cls}`}>
-      {arrow} {n > 0 ? "+" : ""}{n} pts{suffix ? ` ${suffix}` : ""}
+      {arrow} {t("common.pts", { n: `${n > 0 ? "+" : ""}${n}` })}{suffix ? ` ${suffix}` : ""}
     </span>
   );
 }
@@ -57,13 +60,14 @@ export function Bar({ value }: { value: number | null }) {
 }
 
 export function Stepper({ label, onPrev, onNext, nextDisabled, children }: { label: string; onPrev: () => void; onNext: () => void; nextDisabled?: boolean; children?: ReactNode }) {
+  const t = useT();
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <button className="btn btn-soft !px-2" onClick={onPrev} aria-label="Previous">
+      <button className="btn btn-soft !px-2" onClick={onPrev} aria-label={t("common.prev")}>
         <ChevronLeft className="h-4 w-4" />
       </button>
       <span className="min-w-[9rem] text-center text-sm font-bold">{label}</span>
-      <button className="btn btn-soft !px-2 disabled:opacity-40" onClick={onNext} disabled={nextDisabled} aria-label="Next">
+      <button className="btn btn-soft !px-2 disabled:opacity-40" onClick={onNext} disabled={nextDisabled} aria-label={t("common.next")}>
         <ChevronRight className="h-4 w-4" />
       </button>
       {children}
@@ -71,9 +75,9 @@ export function Stepper({ label, onPrev, onNext, nextDisabled, children }: { lab
   );
 }
 
-export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+export function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label?: string }) {
   return (
-    <div className="inline-flex rounded-md bg-beige p-1" role="tablist">
+    <div className="inline-flex rounded-md bg-beige p-1" role="tablist" aria-label={label}>
       {options.map((o) => (
         <button
           key={o.value}
@@ -86,6 +90,20 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
         </button>
       ))}
     </div>
+  );
+}
+
+/** Subtle ID | EN switcher. */
+export function LangSwitch() {
+  const lang = useLang();
+  const t = useT();
+  return (
+    <Segmented
+      value={lang}
+      onChange={setLang}
+      label={t("settings.language")}
+      options={[{ value: "id", label: "ID" }, { value: "en", label: "EN" }]}
+    />
   );
 }
 

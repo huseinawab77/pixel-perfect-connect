@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { compare } from "@/lib/awwab/calc";
 import { nextPeriod, periodFor, previousPeriod, type PeriodKind } from "@/lib/awwab/dates";
+import { useLang, useT } from "@/lib/awwab/i18n";
 import { useAppState } from "@/lib/awwab/store";
 import { useToday } from "@/lib/awwab/useToday";
 import { DomainList, Highlights, LifeScoreBlock } from "./Performance";
@@ -9,31 +10,37 @@ import { PageHeader, Stepper } from "./ui";
 export function PeriodPage({ kind }: { kind: PeriodKind }) {
   const today = useToday();
   const state = useAppState();
+  const t = useT();
+  const lang = useLang();
   const [anchor, setAnchor] = useState(today);
-  const period = periodFor(kind, anchor);
-  const c = useMemo(() => compare(period, state.entries, today), [state.entries, today, period.start, kind]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const period = useMemo(() => periodFor(kind, anchor), [kind, anchor, lang]);
+  const c = useMemo(() => compare(period, state.entries, today, state.habits), [state.entries, state.habits, today, period]);
   const current = period.start <= today && period.end >= today;
-  const label = kind === "week" ? "week" : "month";
 
   return (
     <div className="space-y-8">
-      <PageHeader eyebrow={kind === "week" ? "Weekly" : "Monthly"} title={current ? `This ${label}` : period.label} subtitle={current ? `${period.label} · only days so far are counted` : `Monday-to-Sunday performance`}>
+      <PageHeader
+        eyebrow={t(kind === "week" ? "nav.weekly" : "nav.monthly")}
+        title={current ? t(`period.title.${kind}`) : period.label}
+        subtitle={current ? t("period.soFar", { label: period.label }) : t(`period.sub.${kind}`)}
+      >
         <Stepper
           label={period.label}
           onPrev={() => setAnchor(previousPeriod(period).start)}
           onNext={() => setAnchor(nextPeriod(period).start)}
           nextDisabled={period.end >= today}
         >
-          {!current && <button className="btn btn-ghost" onClick={() => setAnchor(today)}>This {label}</button>}
+          {!current && <button className="btn btn-ghost" onClick={() => setAnchor(today)}>{t(`period.title.${kind}`)}</button>}
         </Stepper>
       </PageHeader>
       {period.start > today ? null : (
         <>
-          <LifeScoreBlock c={c} prevLabel={`previous ${label}`} />
+          <LifeScoreBlock c={c} prevLabel={t(`period.prev.${kind}`)} />
           <Highlights c={c} />
           <section>
-            <h2 className="text-h2 mb-1">Domains & activities</h2>
-            <p className="mb-3 text-sm text-muted-foreground">Tap a domain to see how each activity contributes.</p>
+            <h2 className="text-h2 mb-1">{t("sec.domainsActs")}</h2>
+            <p className="mb-3 text-sm text-muted-foreground">{t("sec.domainsHint")}</p>
             <DomainList c={c} />
           </section>
         </>

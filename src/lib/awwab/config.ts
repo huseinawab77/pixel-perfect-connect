@@ -1,17 +1,13 @@
-// Single source of truth for domains, activities, targets and weights.
+// Single source of truth for domains and the default (system) habit configuration.
+// Habit configuration is versioned: every change creates a new version with an
+// `effectiveFrom` date, so past periods are always calculated with the settings
+// that were in effect at the time.
 
-export type DomainId =
-  | "academic"
-  | "health"
-  | "finance"
-  | "career"
-  | "personal"
-  | "social"
-  | "life";
+export type DomainId = "academic" | "health" | "finance" | "career" | "personal" | "social" | "life";
 
 export interface Domain {
   id: DomainId;
-  name: string;
+  name: string; // English fallback; UI uses translations
   weight: number; // Life Score weight (%)
 }
 
@@ -25,94 +21,157 @@ export const DOMAINS: Domain[] = [
   { id: "life", name: "Life Management", weight: 10 },
 ];
 
-export const DOMAIN_BY_ID = Object.fromEntries(DOMAINS.map((d) => [d.id, d])) as Record<
-  DomainId,
-  Domain
->;
+export const DOMAIN_BY_ID = Object.fromEntries(DOMAINS.map((d) => [d.id, d])) as Record<DomainId, Domain>;
+export const isDomainId = (x: unknown): x is DomainId => typeof x === "string" && x in DOMAIN_BY_ID;
+
+export type Frequency = "day" | "week" | "month";
+export type InputType = "checklist" | "quantitative";
 
 /**
- * How raw input is turned into performance:
- * - daily_check:     checklist, each recorded day is success/not (completed days / recorded days)
- * - frequency:       checklist, completed occurrences / target occurrences (prorated to eligible days)
- * - daily_threshold: numeric, successful days (value >= target) / recorded days
- * - weekly_sum:      numeric, accumulated total / target (prorated to eligible days)
+ * How raw input becomes performance (derived from input type + frequency):
+ * - daily_check:     checklist/day — completed days / recorded days
+ * - frequency:       checklist/week|month — completed occurrences / target (prorated to eligible days)
+ * - daily_threshold: quantitative/day — days at or above target / recorded days
+ * - sum:             quantitative/week|month — accumulated total / target (prorated to eligible days)
  */
-export type ScoringMode = "daily_check" | "frequency" | "daily_threshold" | "weekly_sum";
+export type ScoringMode = "daily_check" | "frequency" | "daily_threshold" | "sum";
 
-export interface TargetVersion {
-  effectiveFrom: string; // YYYY-MM-DD — enables future target history
-  value: number;
-}
+export const scoringFor = (inputType: InputType, frequency: Frequency): ScoringMode =>
+  inputType === "checklist" ? (frequency === "day" ? "daily_check" : "frequency") : frequency === "day" ? "daily_threshold" : "sum";
 
-export interface Activity {
-  id: string;
-  name: string;
+export interface HabitVersion {
+  effectiveFrom: string; // YYYY-MM-DD
   domain: DomainId;
-  inputType: "checklist" | "quantitative";
-  targets: TargetVersion[];
+  inputType: InputType;
+  target: number;
   unit: string;
-  frequency: "day" | "week" | "month";
-  scoring: ScoringMode;
+  frequency: Frequency;
   weight: number; // within domain (%)
   active: boolean;
-  targetLabel: string;
 }
 
-const t = (value: number): TargetVersion[] => [{ effectiveFrom: "1970-01-01", value }];
+export interface Habit {
+  id: string; // stable, language-independent; never changes
+  isSystem: boolean;
+  customName: string | null; // user-entered name; null = translated system name
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  versions: HabitVersion[]; // sorted by effectiveFrom
+}
 
-export const ACTIVITIES: Activity[] = [
-  // Academic
-  { id: "study_session", name: "Study Session", domain: "academic", inputType: "checklist", targets: t(5), unit: "sessions", frequency: "week", scoring: "frequency", weight: 30, active: true, targetLabel: "5× / week" },
-  { id: "deep_work", name: "Deep Work", domain: "academic", inputType: "quantitative", targets: t(600), unit: "min", frequency: "week", scoring: "weekly_sum", weight: 40, active: true, targetLabel: "600 min / week" },
-  { id: "task_completion", name: "Task Completion", domain: "academic", inputType: "checklist", targets: t(1), unit: "day", frequency: "day", scoring: "daily_check", weight: 30, active: true, targetLabel: "100% on-time" },
-  // Health
-  { id: "gym", name: "Gym", domain: "health", inputType: "checklist", targets: t(3), unit: "sessions", frequency: "week", scoring: "frequency", weight: 30, active: true, targetLabel: "3× / week" },
-  { id: "daily_steps", name: "Daily Steps", domain: "health", inputType: "quantitative", targets: t(6000), unit: "steps", frequency: "day", scoring: "daily_threshold", weight: 20, active: true, targetLabel: "6,000 / day" },
-  { id: "protein", name: "Protein Intake", domain: "health", inputType: "quantitative", targets: t(120), unit: "g", frequency: "day", scoring: "daily_threshold", weight: 30, active: true, targetLabel: "120 g / day" },
-  { id: "fruit_veg", name: "Fruit & Vegetable", domain: "health", inputType: "checklist", targets: t(1), unit: "day", frequency: "day", scoring: "daily_check", weight: 20, active: true, targetLabel: "2 occasions / day" },
-  // Finance
-  { id: "expense_tracking", name: "Expense Tracking", domain: "finance", inputType: "checklist", targets: t(1), unit: "day", frequency: "day", scoring: "daily_check", weight: 100, active: true, targetLabel: "100% recorded" },
-  // Career
-  { id: "skill_dev", name: "Skill Development", domain: "career", inputType: "checklist", targets: t(1), unit: "day", frequency: "day", scoring: "daily_check", weight: 30, active: true, targetLabel: "30 min / day" },
-  { id: "competition", name: "Competition", domain: "career", inputType: "checklist", targets: t(2), unit: "times", frequency: "month", scoring: "frequency", weight: 15, active: true, targetLabel: "2× / month" },
-  { id: "project_completion", name: "Project Completion", domain: "career", inputType: "checklist", targets: t(1), unit: "projects", frequency: "month", scoring: "frequency", weight: 30, active: true, targetLabel: "1 / month" },
-  { id: "professional_event", name: "Professional Event", domain: "career", inputType: "checklist", targets: t(1), unit: "events", frequency: "month", scoring: "frequency", weight: 10, active: true, targetLabel: "1× / month" },
-  { id: "networking", name: "Networking", domain: "career", inputType: "checklist", targets: t(5), unit: "connections", frequency: "week", scoring: "frequency", weight: 15, active: true, targetLabel: "5 / week" },
-  // Personal
-  { id: "reading", name: "Reading", domain: "personal", inputType: "checklist", targets: t(1), unit: "day", frequency: "day", scoring: "daily_check", weight: 50, active: true, targetLabel: "10 pages / day" },
-  { id: "journaling", name: "Journaling", domain: "personal", inputType: "checklist", targets: t(1), unit: "day", frequency: "day", scoring: "daily_check", weight: 50, active: true, targetLabel: "1 page / day" },
-  // Social
-  { id: "family_time", name: "Quality Time Family", domain: "social", inputType: "checklist", targets: t(2), unit: "times", frequency: "month", scoring: "frequency", weight: 30, active: true, targetLabel: "2× / month" },
-  { id: "helping_others", name: "Helping Others", domain: "social", inputType: "checklist", targets: t(3), unit: "acts", frequency: "week", scoring: "frequency", weight: 30, active: true, targetLabel: "3 / week" },
-  { id: "friendship_followup", name: "Friendship Follow-up", domain: "social", inputType: "checklist", targets: t(2), unit: "times", frequency: "month", scoring: "frequency", weight: 20, active: true, targetLabel: "2× / month" },
-  { id: "relationship_followup", name: "Relationship Follow-up", domain: "social", inputType: "checklist", targets: t(2), unit: "times", frequency: "month", scoring: "frequency", weight: 20, active: true, targetLabel: "2× / month" },
-  // Life management
-  { id: "laundry", name: "Laundry", domain: "life", inputType: "checklist", targets: t(1), unit: "times", frequency: "week", scoring: "frequency", weight: 30, active: true, targetLabel: "1× / week" },
-  { id: "meal_planning", name: "Weekly Meal Planning", domain: "life", inputType: "checklist", targets: t(1), unit: "times", frequency: "week", scoring: "frequency", weight: 70, active: true, targetLabel: "1× / week" },
-];
+/** A habit resolved for a specific date — what the calculation engine consumes. */
+export interface Activity {
+  id: string;
+  isSystem: boolean;
+  customName: string | null;
+  domain: DomainId;
+  inputType: InputType;
+  target: number;
+  unit: string;
+  frequency: Frequency;
+  scoring: ScoringMode;
+  weight: number;
+}
 
-export const ACTIVITY_BY_ID = Object.fromEntries(ACTIVITIES.map((a) => [a.id, a])) as Record<
-  string,
-  Activity
->;
+const EPOCH = "1970-01-01";
+type Def = Omit<HabitVersion, "effectiveFrom" | "active">;
+const def = (domain: DomainId, inputType: InputType, target: number, unit: string, frequency: Frequency, weight: number): Def => ({ domain, inputType, target, unit, frequency, weight });
 
-export const activitiesFor = (domain: DomainId) => ACTIVITIES.filter((a) => a.domain === domain && a.active);
+/** The 21 default AWWAB activities. */
+export const SYSTEM_DEFAULTS: Record<string, Def> = {
+  study_session: def("academic", "checklist", 5, "sessions", "week", 30),
+  deep_work: def("academic", "quantitative", 600, "min", "week", 40),
+  task_completion: def("academic", "checklist", 1, "day", "day", 30),
+  gym: def("health", "checklist", 3, "sessions", "week", 30),
+  daily_steps: def("health", "quantitative", 6000, "steps", "day", 20),
+  protein: def("health", "quantitative", 120, "g", "day", 30),
+  fruit_veg: def("health", "checklist", 1, "day", "day", 20),
+  expense_tracking: def("finance", "checklist", 1, "day", "day", 100),
+  skill_dev: def("career", "checklist", 1, "day", "day", 30),
+  competition: def("career", "checklist", 2, "times", "month", 15),
+  project_completion: def("career", "checklist", 1, "projects", "month", 30),
+  professional_event: def("career", "checklist", 1, "events", "month", 10),
+  networking: def("career", "checklist", 5, "connections", "week", 15),
+  reading: def("personal", "checklist", 1, "day", "day", 50),
+  journaling: def("personal", "checklist", 1, "day", "day", 50),
+  family_time: def("social", "checklist", 2, "times", "month", 30),
+  helping_others: def("social", "checklist", 3, "acts", "week", 30),
+  friendship_followup: def("social", "checklist", 2, "times", "month", 20),
+  relationship_followup: def("social", "checklist", 2, "times", "month", 20),
+  laundry: def("life", "checklist", 1, "times", "week", 30),
+  meal_planning: def("life", "checklist", 1, "times", "week", 70),
+};
 
-/** Target in effect on a given date (supports future target history). */
-export function targetOn(a: Activity, date: string): number {
-  let v = a.targets[0].value;
-  for (const tv of a.targets) if (tv.effectiveFrom <= date) v = tv.value;
+export const systemHabits = (): Habit[] =>
+  Object.entries(SYSTEM_DEFAULTS).map(([id, d]) => ({
+    id,
+    isSystem: true,
+    customName: null,
+    createdAt: EPOCH,
+    updatedAt: EPOCH,
+    archivedAt: null,
+    versions: [{ ...d, effectiveFrom: EPOCH, active: true }],
+  }));
+
+export const SYSTEM_HABITS: Habit[] = systemHabits();
+
+/** Version in effect on `date`, or null if the habit didn't exist yet. */
+export function versionAt(h: Habit, date: string): HabitVersion | null {
+  let v: HabitVersion | null = null;
+  for (const x of h.versions) if (x.effectiveFrom <= date) v = x;
   return v;
 }
 
-/** Validates weights — never silently normalized. */
+export const latestVersion = (h: Habit): HabitVersion => h.versions[h.versions.length - 1];
+
+export function toActivity(h: Habit, v: HabitVersion): Activity {
+  return {
+    id: h.id,
+    isSystem: h.isSystem,
+    customName: h.customName,
+    domain: v.domain,
+    inputType: v.inputType,
+    target: v.target,
+    unit: v.unit,
+    frequency: v.frequency,
+    scoring: scoringFor(v.inputType, v.frequency),
+    weight: v.weight,
+  };
+}
+
+/** Habits that are active on `date`, resolved with the configuration in effect then. */
+export function activitiesAt(habits: Habit[], date: string): Activity[] {
+  const out: Activity[] = [];
+  for (const h of habits) {
+    const v = versionAt(h, date);
+    if (v && v.active) out.push(toActivity(h, v));
+  }
+  return out;
+}
+
+export const inDomain = (list: Activity[], domain: DomainId) => list.filter((a) => a.domain === domain);
+
+/** Default system activities (used by tests and as fallback). */
+export const ACTIVITIES: Activity[] = activitiesAt(SYSTEM_HABITS, EPOCH);
+export const ACTIVITY_BY_ID = Object.fromEntries(ACTIVITIES.map((a) => [a.id, a])) as Record<string, Activity>;
+
+/** Domains whose active activity weights don't total 100. Never silently normalized. */
+export function weightIssues(list: Activity[]): { domain: DomainId; total: number }[] {
+  const out: { domain: DomainId; total: number }[] = [];
+  for (const d of DOMAINS) {
+    const acts = inDomain(list, d.id);
+    if (!acts.length) continue;
+    const total = Math.round(acts.reduce((s, a) => s + a.weight, 0) * 10) / 10;
+    if (total !== 100) out.push({ domain: d.id, total });
+  }
+  return out;
+}
+
 export function validateConfig(): string[] {
   const errors: string[] = [];
   const dsum = DOMAINS.reduce((s, d) => s + d.weight, 0);
   if (dsum !== 100) errors.push(`Domain weights total ${dsum}, expected 100`);
-  for (const d of DOMAINS) {
-    const s = activitiesFor(d.id).reduce((x, a) => x + a.weight, 0);
-    if (s !== 100) errors.push(`${d.name} activity weights total ${s}, expected 100`);
-  }
+  for (const w of weightIssues(ACTIVITIES)) errors.push(`${w.domain} activity weights total ${w.total}, expected 100`);
   return errors;
 }
