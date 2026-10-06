@@ -1,5 +1,6 @@
 // Persistent local-storage abstraction. Raw user input only — never calculated values.
 import { useSyncExternalStore } from "react";
+import { isDomainId, latestVersion, systemHabits, type DomainId, type Frequency, type Habit, type HabitVersion, type InputType } from "./config";
 
 export interface DailyEntry {
   date: string;
@@ -73,10 +74,14 @@ export interface AppState {
   projects: Project[];
   milestones: Milestone[];
   reviews: Review[];
+  habits: Habit[];
 }
 
 const KEY = "awwab:v1";
-const EMPTY: AppState = { version: 1, entries: {}, goals: [], projects: [], milestones: [], reviews: [] };
+const EMPTY: AppState = { version: 1, entries: {}, goals: [], projects: [], milestones: [], reviews: [], habits: systemHabits() };
+
+const arr = <X>(x: unknown): X[] => (Array.isArray(x) ? (x as X[]) : []);
+const validHabit = (h: Habit) => !!h && typeof h.id === "string" && Array.isArray(h.versions) && h.versions.length > 0 && h.versions.every((v) => isDomainId(v.domain));
 
 let state: AppState = EMPTY;
 let loaded = false;
@@ -87,7 +92,19 @@ function load() {
   loaded = true;
   try {
     const raw = window.localStorage.getItem(KEY);
-    if (raw) state = { ...EMPTY, ...JSON.parse(raw) };
+    if (raw) {
+      const p = JSON.parse(raw) ?? {};
+      const habits = arr<Habit>(p.habits).filter(validHabit);
+      state = {
+        version: 1,
+        entries: p.entries && typeof p.entries === "object" ? p.entries : {},
+        goals: arr(p.goals),
+        projects: arr(p.projects),
+        milestones: arr(p.milestones),
+        reviews: arr(p.reviews),
+        habits: habits.length ? habits : systemHabits(),
+      };
+    }
   } catch {
     state = EMPTY;
   }
@@ -204,4 +221,90 @@ export function saveReview(r: Omit<Review, "id" | "createdAt" | "updatedAt">) {
   } else {
     commit({ ...s, reviews: [...s.reviews, { ...r, id: uid(), createdAt: now(), updatedAt: now() }] });
   }
+}
+
+// ---------- Habits (versioned configuration) ----------
+export interface HabitInput {
+  name: string;
+  domain: DomainId;
+  inputType: InputType;
+  target: number;
+  unit: string;
+  frequency: Frequency;
+  weight: number;
+}
+
+/** Adds a new version effective `today`; replaces a version already created today. Never rewrites the past. */
+function withVersion(h: Habit, today: string, patch: Partial<HabitVersion>): Habit {
+  const last = latestVersion(h);
+  const next: HabitVersion = { ...last, ...patch, effectiveFrom: today };
+  const versions = last.effectiveFrom >= today ? [...h.versions.slice(0, -1), next] : [...h.versions, next];
+  return { ...h, versions, updatedAt: now() };
+}
+
+const updateHabitState = (id: string, f: (h: Habit) => Habit) => {
+  const s = getState();
+  commit({ ...s, habits: s.habits.map((h) => (h.id === id ? f(h) : h)) });
+};
+
+export function createHabit(input: HabitInput, today: string) {
+  const s = getState();
+  const { name, ...v } = input;
+  const h: Habit = {
+    id: `h_${uid()}`,
+    isSystem: false,
+    customName: name.trim(),
+    createdAt: now(),
+    updatedAt: now(),
+    archivedAt: null,
+    versions: [{ ...v, target: v.inputType === "checklist" && v.frequency === "day" ? 1 : v.target, effectiveFrom: today, active: true }],
+  };
+  commit({ ...s, habits: [...s.habits, h] });
+  return h.id;
+}
+
+/** `customName` null keeps the translated system name. */
+export function updateHabit(id: string, customName: string | null, v: Omit<HabitInput, "name">, today: string) {
+  updateHabitState(id, (h) => ({
+    ...withVersion(h, today, { ...v, target: v.inputType === "checklist" && v.frequency === "day" ? 1 : v.target }),
+    customName,
+  }));
+}
+
+export function archiveHabit(id: string, today: string) {
+  updateHabitState(id, (h) => ({ ...withVersion(h, today, { active: false }), archivedAt: now() }));
+}
+
+export function reactivateHabit(id: string, today: string) {
+  updateHabitState(id, (h) => ({ ...withVersion(h, today, { active: true }), archivedAt: null }));
+}
+
+export const habitHasHistory = (s: AppState, id: string) => Object.values(s.entries).some((day) => !!day[id]);
+
+/** Hard delete — only for habits without any recorded data. */
+export function deleteHabit(id: string) {
+  const s = getState();
+  if (habitHasHistory(s, id)) return false;
+  commit({ ...s, habits: s.habits.filter((h) => h.id !== id) });
+  return true;
+}
+
+/** Explicit, user-triggered: scales active weights in a domain so they total 100. */
+export function rebalanceDomain(domain: DomainId, today: string) {
+  const s = getState();
+  const act = s.habits.filter((h) => { const v = latestVersion(h); return v.active && v.domain === domain; });
+  const total = act.reduce((x, h) => x + latestVersion(h).weight, 0);
+  if (!act.length) return;
+  const ids = new Set(act.map((h) => h.id));
+  let assigned = 0;
+  commit({
+    ...s,
+    habits: s.habits.map((h) => {
+      if (!ids.has(h.id)) return h;
+      const isLast = h.id === act[act.length - 1].id;
+      const w = isLast ? Math.round((100 - assigned) * 10) / 10 : Math.round((total ? (latestVersion(h).weight / total) * 100 : 100 / act.length) * 10) / 10;
+      assigned += w;
+      return withVersion(h, today, { weight: w });
+    }),
+  });
 }
