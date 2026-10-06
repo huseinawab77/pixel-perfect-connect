@@ -4,7 +4,7 @@ import { Archive, ArchiveRestore, Check, Pencil, Plus, Trash2 } from "lucide-rea
 import { DOMAINS, DOMAIN_BY_ID, type DomainId } from "@/lib/awwab/config";
 import { formatShort } from "@/lib/awwab/dates";
 import { goalProgress, goalStatus, isOverdue, milestonesOf, projectProgress, projectStatus, projectsOf } from "@/lib/awwab/goals";
-import { deleteMilestone, saveGoal, saveMilestone, saveProject, toggleMilestone, useAppState, type Goal, type Project } from "@/lib/awwab/store";
+import { deleteMilestone, saveGoal, saveMilestone, saveProject, toggleMilestone, useAppState, type Goal, type Milestone, type Project } from "@/lib/awwab/store";
 import { meta, useToday } from "@/lib/awwab/useToday";
 import { Bar, EmptyState, PageHeader, Segmented } from "@/components/awwab/ui";
 
@@ -236,5 +236,26 @@ function ProjectBlock({ project }: { project: Project }) {
         </form>
       )}
     </div>
+  );
+}
+
+function MilestoneEdit({ m, onDone }: { m: Milestone; onDone: () => void }) {
+  const [title, setTitle] = useState(m.title);
+  const [due, setDue] = useState(m.dueDate ?? "");
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    saveMilestone({ id: m.id, projectId: m.projectId, title: title.trim(), dueDate: due || null });
+    onDone();
+  };
+  return (
+    <li>
+      <form onSubmit={submit} className="grid grid-cols-2 gap-2 py-1 sm:grid-cols-[minmax(0,1fr)_150px_auto_auto]">
+        <input className="field col-span-2 !py-1.5 text-sm sm:col-span-1" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Milestone title" autoFocus />
+        <input className="field col-span-2 !py-1.5 text-sm sm:col-span-1" type="date" value={due} onChange={(e) => setDue(e.target.value)} aria-label="Milestone due date" />
+        <button className="btn btn-primary !py-1.5" type="submit">Save</button>
+        <button className="btn btn-ghost !py-1.5" type="button" onClick={onDone}>Cancel</button>
+      </form>
+    </li>
   );
 }
