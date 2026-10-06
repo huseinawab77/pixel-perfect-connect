@@ -17,6 +17,7 @@ import { Route as HomeRouteImport } from './routes/home'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as MonthlyRouteImport } from './routes/monthly'
 import { Route as ReviewRouteImport } from './routes/review'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as WeeklyRouteImport } from './routes/weekly'
 
 const IndexRoute = IndexRouteImport.update({
@@ -59,6 +60,11 @@ const ReviewRoute = ReviewRouteImport.update({
   path: '/review',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WeeklyRoute = WeeklyRouteImport.update({
   id: '/weekly',
   path: '/weekly',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/insights': typeof InsightsRoute
   '/monthly': typeof MonthlyRoute
   '/review': typeof ReviewRoute
+  '/settings': typeof SettingsRoute
   '/weekly': typeof WeeklyRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/insights': typeof InsightsRoute
   '/monthly': typeof MonthlyRoute
   '/review': typeof ReviewRoute
+  '/settings': typeof SettingsRoute
   '/weekly': typeof WeeklyRoute
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/insights': typeof InsightsRoute
   '/monthly': typeof MonthlyRoute
   '/review': typeof ReviewRoute
+  '/settings': typeof SettingsRoute
   '/weekly': typeof WeeklyRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/insights'
     | '/monthly'
     | '/review'
+    | '/settings'
     | '/weekly'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/insights'
     | '/monthly'
     | '/review'
+    | '/settings'
     | '/weekly'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/insights'
     | '/monthly'
     | '/review'
+    | '/settings'
     | '/weekly'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   InsightsRoute: typeof InsightsRoute
   MonthlyRoute: typeof MonthlyRoute
   ReviewRoute: typeof ReviewRoute
+  SettingsRoute: typeof SettingsRoute
   WeeklyRoute: typeof WeeklyRoute
 }
 
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/weekly': {
       id: '/weekly'
       path: '/weekly'
@@ -224,6 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   InsightsRoute: InsightsRoute,
   MonthlyRoute: MonthlyRoute,
   ReviewRoute: ReviewRoute,
+  SettingsRoute: SettingsRoute,
   WeeklyRoute: WeeklyRoute,
 }
 export const routeTree = rootRouteImport
