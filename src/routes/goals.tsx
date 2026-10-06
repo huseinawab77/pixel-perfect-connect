@@ -4,7 +4,7 @@ import { Archive, ArchiveRestore, Check, Pencil, Plus, Trash2 } from "lucide-rea
 import { DOMAINS, DOMAIN_BY_ID, type DomainId } from "@/lib/awwab/config";
 import { formatShort } from "@/lib/awwab/dates";
 import { goalProgress, goalStatus, isOverdue, milestonesOf, projectProgress, projectStatus, projectsOf } from "@/lib/awwab/goals";
-import { deleteMilestone, saveGoal, saveMilestone, saveProject, toggleMilestone, useAppState, type Goal, type Project } from "@/lib/awwab/store";
+import { deleteMilestone, saveGoal, saveMilestone, saveProject, toggleMilestone, useAppState, type Goal, type Milestone, type Project } from "@/lib/awwab/store";
 import { meta, useToday } from "@/lib/awwab/useToday";
 import { Bar, EmptyState, PageHeader, Segmented } from "@/components/awwab/ui";
 
@@ -154,6 +154,7 @@ function ProjectBlock({ project }: { project: Project }) {
   const [editing, setEditing] = useState(false);
   const [msTitle, setMsTitle] = useState("");
   const [msDate, setMsDate] = useState("");
+  const [editingMs, setEditingMs] = useState<string | null>(null);
   const progress = projectProgress(state, project);
   const status = projectStatus(state, project);
   const ms = milestonesOf(state, project.id);
@@ -193,6 +194,7 @@ function ProjectBlock({ project }: { project: Project }) {
         {ms.map((m) => {
           const done = m.status === "completed";
           const overdue = isOverdue(m.dueDate, done, today);
+          if (editingMs === m.id) return <MilestoneEdit key={m.id} m={m} onDone={() => setEditingMs(null)} />;
           return (
             <li key={m.id} className="group grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-sm px-1 py-1 hover:bg-cream">
               <button
@@ -208,7 +210,14 @@ function ProjectBlock({ project }: { project: Project }) {
               <span className="flex items-center gap-2 text-xs">
                 {m.dueDate && <span className={overdue ? "chip chip-warn" : "text-muted-foreground"}>{overdue ? "Overdue · " : ""}{formatShort(m.dueDate)}</span>}
                 <button
-                  className="text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 focus:opacity-100"
+                  className="text-muted-foreground transition-opacity hover:text-foreground sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
+                  aria-label={`Edit ${m.title}`}
+                  onClick={() => setEditingMs(m.id)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  className="text-muted-foreground transition-opacity hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
                   aria-label={`Delete ${m.title}`}
                   onClick={() => window.confirm(`Delete milestone "${m.title}"? This can't be undone.`) && deleteMilestone(m.id)}
                 >
@@ -221,11 +230,32 @@ function ProjectBlock({ project }: { project: Project }) {
       </ul>
       {!archived && (
         <form onSubmit={addMs} className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_150px_auto]">
-          <input className="field !py-1.5 text-sm" placeholder="Add milestone" value={msTitle} onChange={(e) => setMsTitle(e.target.value)} />
-          <input className="field hidden !py-1.5 text-sm sm:block" type="date" value={msDate} onChange={(e) => setMsDate(e.target.value)} aria-label="Milestone due date" />
+          <input className="field col-span-2 !py-1.5 text-sm sm:col-span-1" placeholder="Add milestone" value={msTitle} onChange={(e) => setMsTitle(e.target.value)} />
+          <input className="field !py-1.5 text-sm" type="date" value={msDate} onChange={(e) => setMsDate(e.target.value)} aria-label="Milestone due date" />
           <button className="btn btn-soft !py-1.5" type="submit" aria-label="Add milestone"><Plus className="h-4 w-4" /></button>
         </form>
       )}
     </div>
+  );
+}
+
+function MilestoneEdit({ m, onDone }: { m: Milestone; onDone: () => void }) {
+  const [title, setTitle] = useState(m.title);
+  const [due, setDue] = useState(m.dueDate ?? "");
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    saveMilestone({ id: m.id, projectId: m.projectId, title: title.trim(), dueDate: due || null });
+    onDone();
+  };
+  return (
+    <li>
+      <form onSubmit={submit} className="grid grid-cols-2 gap-2 py-1 sm:grid-cols-[minmax(0,1fr)_150px_auto_auto]">
+        <input className="field col-span-2 !py-1.5 text-sm sm:col-span-1" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Milestone title" autoFocus />
+        <input className="field col-span-2 !py-1.5 text-sm sm:col-span-1" type="date" value={due} onChange={(e) => setDue(e.target.value)} aria-label="Milestone due date" />
+        <button className="btn btn-primary !py-1.5" type="submit">Save</button>
+        <button className="btn btn-ghost !py-1.5" type="button" onClick={onDone}>Cancel</button>
+      </form>
+    </li>
   );
 }
