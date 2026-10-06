@@ -1,5 +1,5 @@
 // Calculation engine — pure functions. The only place scoring formulas live.
-import { ACTIVITIES, DOMAINS, activitiesFor, targetOn, type Activity, type DomainId } from "./config";
+import { DOMAINS, SYSTEM_HABITS, activitiesAt, inDomain, type Activity, type DomainId, type Habit } from "./config";
 import { addDays, daysInMonth, eligibleDates, fromKey, periodFor, previousPeriod, type Period } from "./dates";
 import type { Entries } from "./store";
 
@@ -18,9 +18,13 @@ export interface ActivityResult {
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
+/** Date whose habit configuration applies to a period: its last elapsed day. */
+export const configDate = (period: Period, today: string) =>
+  period.start > today ? period.start : period.end < today ? period.end : today;
+
 export function activityPerformance(a: Activity, period: Period, entries: Entries, today: string): ActivityResult {
   const dates = eligibleDates(period, today);
-  const target = targetOn(a, period.start);
+  const target = a.target;
   const base = { activityId: a.id, eligible: dates.length };
   const vals = dates.map((d) => entries[d]?.[a.id]).filter(Boolean);
   const none = (): ActivityResult => ({ ...base, target, actual: 0, recorded: 0, denominator: 0, performance: null, status: "no_data" });
@@ -28,6 +32,8 @@ export function activityPerformance(a: Activity, period: Period, entries: Entrie
     const performance = denominator > 0 ? round1(Math.min(actual / denominator, 1) * 100) : null;
     return { ...base, target: tgt, actual, recorded, denominator, performance, status: performance === null ? "no_data" : performance >= 100 ? "on_target" : "below_target" };
   };
+  const ps = fromKey(period.start);
+  const perDay = (t: number) => (a.frequency === "week" ? t / 7 : a.frequency === "month" ? t / daysInMonth(ps.getFullYear(), ps.getMonth()) : t);
 
   switch (a.scoring) {
     case "daily_check": {
@@ -40,9 +46,7 @@ export function activityPerformance(a: Activity, period: Period, entries: Entrie
       const rec = vals.filter((e) => e!.completed !== null);
       if (!rec.length) return none();
       const done = rec.filter((e) => e!.completed === true).length;
-      const ps = fromKey(period.start);
-      const perDay = a.frequency === "week" ? target / 7 : target / daysInMonth(ps.getFullYear(), ps.getMonth());
-      const expected = round1(perDay * dates.length);
+      const expected = round1(perDay(target) * dates.length);
       return finish(done, expected, rec.length, expected);
     }
     case "daily_threshold": {
@@ -51,11 +55,11 @@ export function activityPerformance(a: Activity, period: Period, entries: Entrie
       const ok = rec.filter((e) => (e!.value as number) >= target).length;
       return finish(ok, rec.length, rec.length, target);
     }
-    case "weekly_sum": {
+    case "sum": {
       const rec = vals.filter((e) => typeof e!.value === "number");
       if (!rec.length) return none();
       const total = rec.reduce((s, e) => s + (e!.value as number), 0);
-      const expected = Math.round((target * dates.length) / 7);
+      const expected = Math.round(perDay(target) * dates.length);
       return finish(total, expected, rec.length, expected);
     }
   }
@@ -71,21 +75,23 @@ export function weightedAverage(items: { score: number | null; weight: number }[
 
 export interface PeriodResult {
   period: Period;
+  list: Activity[]; // habit configuration used for this period
   activities: Record<string, ActivityResult>;
   domains: Record<DomainId, number | null>;
   lifeScore: number | null; // = Overall Consistency (MVP)
   recordedActivities: number;
 }
 
-export function computePeriod(period: Period, entries: Entries, today: string): PeriodResult {
+export function computePeriod(period: Period, entries: Entries, today: string, habits: Habit[] = SYSTEM_HABITS): PeriodResult {
+  const list = activitiesAt(habits, configDate(period, today));
   const activities: Record<string, ActivityResult> = {};
-  for (const a of ACTIVITIES) if (a.active) activities[a.id] = activityPerformance(a, period, entries, today);
+  for (const a of list) activities[a.id] = activityPerformance(a, period, entries, today);
   const domains = {} as Record<DomainId, number | null>;
   for (const d of DOMAINS)
-    domains[d.id] = weightedAverage(activitiesFor(d.id).map((a) => ({ score: activities[a.id].performance, weight: a.weight })));
+    domains[d.id] = weightedAverage(inDomain(list, d.id).map((a) => ({ score: activities[a.id].performance, weight: a.weight })));
   const lifeScore = weightedAverage(DOMAINS.map((d) => ({ score: domains[d.id], weight: d.weight })));
   const recordedActivities = Object.values(activities).filter((r) => r.status !== "no_data").length;
-  return { period, activities, domains, lifeScore, recordedActivities };
+  return { period, list, activities, domains, lifeScore, recordedActivities };
 }
 
 export type TrendDir = "improving" | "stable" | "declining";
@@ -107,9 +113,9 @@ export interface Comparison {
   biggestDecline: { id: DomainId; diff: number } | null;
 }
 
-export function compare(period: Period, entries: Entries, today: string): Comparison {
-  const current = computePeriod(period, entries, today);
-  const previous = computePeriod(previousPeriod(period), entries, today);
+export function compare(period: Period, entries: Entries, today: string, habits: Habit[] = SYSTEM_HABITS): Comparison {
+  const current = computePeriod(period, entries, today, habits);
+  const previous = computePeriod(previousPeriod(period), entries, today, habits);
   const domainTrends = {} as Comparison["domainTrends"];
   for (const d of DOMAINS) domainTrends[d.id] = trend(current.domains[d.id], previous.domains[d.id]);
   const valid = DOMAINS.filter((d) => current.domains[d.id] !== null).map((d) => ({ id: d.id, score: current.domains[d.id] as number }));
@@ -131,13 +137,13 @@ export function compare(period: Period, entries: Entries, today: string): Compar
 }
 
 /** Life Scores of each week in a month (only weeks that have started). */
-export function weeklyLifeScoresInMonth(month: Period, entries: Entries, today: string) {
-  const out: { label: string; score: number | null }[] = [];
+export function weeklyLifeScoresInMonth(month: Period, entries: Entries, today: string, habits: Habit[] = SYSTEM_HABITS) {
+  const out: { week: number; score: number | null }[] = [];
   let k = month.start;
   let i = 1;
   while (k <= month.end && k <= today) {
     const wp = periodFor("week", k);
-    out.push({ label: `Week ${i}`, score: computePeriod(wp, entries, today).lifeScore });
+    out.push({ week: i, score: computePeriod(wp, entries, today, habits).lifeScore });
     i++;
     k = addDays(wp.end, 1);
   }
