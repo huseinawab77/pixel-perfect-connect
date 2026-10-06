@@ -1,7 +1,8 @@
 // Deterministic insight engine — no AI. Every insight is traceable to calculated data.
-import { ACTIVITY_BY_ID, DOMAIN_BY_ID, DOMAINS, activitiesFor, type DomainId } from "./config";
+import { DOMAINS, inDomain, type DomainId, type Habit } from "./config";
 import { compare, computePeriod, TREND_THRESHOLD, type PeriodResult } from "./calc";
 import { previousPeriod, type Period } from "./dates";
+import { actName, domainName, joinNames, targetText, type T } from "./i18n";
 import type { Entries } from "./store";
 
 export type InsightType =
@@ -28,48 +29,50 @@ export interface Insight {
   severity: "positive" | "neutral" | "attention";
 }
 
-const pts = (n: number) => `${Math.abs(Math.round(n))} point${Math.abs(Math.round(n)) === 1 ? "" : "s"}`;
 const pct = (n: number | null) => (n === null ? "—" : `${Math.round(n)}%`);
-const listNames = (names: string[]) => (names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
 
-export function generateInsights(period: Period, entries: Entries, today: string): Insight[] {
-  const word = period.kind === "week" ? "this week" : "this month";
-  const prevWord = period.kind === "week" ? "last week" : "last month";
-  const c = compare(period, entries, today);
+export function generateInsights(period: Period, entries: Entries, today: string, habits: Habit[], t: T): Insight[] {
+  const k = period.kind;
+  const word = t(`period.this.${k}`);
+  const prevWord = t(`period.last.${k}`);
+  const c = compare(period, entries, today, habits);
   const cur = c.current;
   const prev = c.previous;
   const out: Omit<Insight, "priority">[] = [];
   const usedActivities = new Set<string>();
+  const cfg = Object.fromEntries(cur.list.map((a) => [a.id, a]));
+  const dn = (id: DomainId) => domainName(id, t);
 
   if (cur.lifeScore === null) {
     return [{
       id: "insufficient", type: "insufficient_data", priority: "primary", period: period.label, severity: "neutral",
-      title: "Not enough data yet",
-      description: `Track a few activities ${word} and AWWAB will start explaining what's happening.`,
+      title: t("ins.none.title"),
+      description: t("ins.none.desc", { period: word }),
       evidence: [],
     }];
   }
 
+  const perf = (r: PeriodResult, id: string) => r.activities[id]?.performance ?? null;
   const activityDelta = (id: string) => {
-    const a = cur.activities[id].performance;
-    const b = prev.activities[id].performance;
+    const a = perf(cur, id);
+    const b = perf(prev, id);
     return a === null || b === null ? null : a - b;
   };
 
   // 1–2. Domain declines / improvements with weighted contributors
-  const domainChanges = DOMAINS.map((d) => ({ d, t: c.domainTrends[d.id] })).filter((x) => x.t && x.t.dir !== "stable");
-  domainChanges.sort((a, b) => Math.abs(b.t!.diff) - Math.abs(a.t!.diff));
-  for (const { d, t } of domainChanges) {
-    const down = t!.diff < 0;
-    const contributors = activitiesFor(d.id)
+  const domainChanges = DOMAINS.map((d) => ({ d, tr: c.domainTrends[d.id] })).filter((x) => x.tr && x.tr.dir !== "stable");
+  domainChanges.sort((a, b) => Math.abs(b.tr!.diff) - Math.abs(a.tr!.diff));
+  for (const { d, tr } of domainChanges) {
+    const down = tr!.diff < 0;
+    const contributors = inDomain(cur.list, d.id)
       .map((a) => ({ a, delta: activityDelta(a.id) }))
       .filter((x) => x.delta !== null && (down ? x.delta <= -TREND_THRESHOLD : x.delta >= TREND_THRESHOLD))
       .sort((x, y) => Math.abs(y.delta!) * y.a.weight - Math.abs(x.delta!) * x.a.weight)
       .slice(0, 2);
     contributors.forEach((x) => usedActivities.add(x.a.id));
     const evidence = [
-      `${d.name}: ${Math.round(prev.domains[d.id]!)} → ${Math.round(cur.domains[d.id]!)} (${t!.diff > 0 ? "+" : ""}${Math.round(t!.diff)})`,
-      ...contributors.map((x) => `${x.a.name}: ${pct(prev.activities[x.a.id].performance)} → ${pct(cur.activities[x.a.id].performance)}`),
+      `${dn(d.id)}: ${Math.round(prev.domains[d.id]!)} → ${Math.round(cur.domains[d.id]!)} (${tr!.diff > 0 ? "+" : ""}${Math.round(tr!.diff)})`,
+      ...contributors.map((x) => `${actName(x.a, t)}: ${pct(perf(prev, x.a.id))} → ${pct(perf(cur, x.a.id))}`),
     ];
     out.push({
       id: `${down ? "dd" : "di"}-${d.id}`,
@@ -77,58 +80,56 @@ export function generateInsights(period: Period, entries: Entries, today: string
       domainId: d.id,
       period: period.label,
       severity: down ? "attention" : "positive",
-      title: `${d.name} ${down ? "declined" : "improved"} ${pts(t!.diff)} ${word}.`,
+      title: t(down ? "ins.domainDown" : "ins.domainUp", { domain: dn(d.id), n: Math.abs(Math.round(tr!.diff)), period: word }),
       description: contributors.length
-        ? `${listNames(contributors.map((x) => x.a.name))} ${contributors.length > 1 ? "were" : "was"} the largest contributor${contributors.length > 1 ? "s" : ""} to the ${down ? "decline" : "improvement"}.`
-        : `Compared with ${prevWord}.`,
+        ? t(contributors.length > 1 ? "ins.contrib.many" : "ins.contrib.one", { names: joinNames(contributors.map((x) => actName(x.a, t)), t) })
+        : t("ins.compared", { prev: prevWord }),
       evidence,
     });
   }
 
   // 3. Lowest-performing domain with its largest weighted weakness
   if (c.weakest) {
-    const d = DOMAIN_BY_ID[c.weakest.id];
-    const weak = activitiesFor(d.id)
-      .map((a) => ({ a, p: cur.activities[a.id].performance }))
+    const id = c.weakest.id;
+    const acts = inDomain(cur.list, id);
+    const weak = acts
+      .map((a) => ({ a, p: perf(cur, a.id) }))
       .filter((x) => x.p !== null && x.p < 100)
       .sort((x, y) => y.a.weight * (100 - y.p!) - x.a.weight * (100 - x.p!))[0];
     out.push({
-      id: `wd-${d.id}`, type: "weakest_domain", domainId: d.id, period: period.label, severity: "attention",
-      title: `${d.name} is your lowest area ${word} at ${Math.round(c.weakest.score)}.`,
-      description: weak ? `${weak.a.name} (${pct(weak.p)}) carries the largest weighted gap in this area.` : "Its tracked activities sit below the others.",
-      evidence: activitiesFor(d.id).map((a) => `${a.name}: ${pct(cur.activities[a.id].performance)} · weight ${a.weight}%`),
+      id: `wd-${id}`, type: "weakest_domain", domainId: id, period: period.label, severity: "attention",
+      title: t("ins.weakest", { domain: dn(id), period: word, n: Math.round(c.weakest.score) }),
+      description: weak ? t("ins.weakest.desc", { act: actName(weak.a, t), p: pct(weak.p) }) : t("ins.weakest.descNone"),
+      evidence: acts.map((a) => `${actName(a, t)}: ${pct(perf(cur, a.id))} · ${t("detail.weight")} ${a.weight}%`),
     });
   }
 
   // 4. Recurring patterns — require 3 comparable periods with data
-  const p1 = previousPeriod(period);
-  const p2 = previousPeriod(p1);
-  const results: PeriodResult[] = [cur, prev, computePeriod(p2, entries, today)];
-  const unit = period.kind === "week" ? "weeks" : "months";
+  const p2 = previousPeriod(previousPeriod(period));
+  const results: PeriodResult[] = [cur, prev, computePeriod(p2, entries, today, habits)];
+  const units = t(`ins.units.${k}`);
+  const evLabels = [t(`ins.ev.ago2.${k}`, { p: "{p}" }), t(`ins.ev.ago1.${k}`, { p: "{p}" }), t("ins.ev.current", { p: "{p}" })];
   const recurring: Omit<Insight, "priority">[] = [];
   for (const id of Object.keys(cur.activities)) {
     if (usedActivities.has(id)) continue;
     const series = results.map((r) => r.activities[id]);
-    if (series.some((s) => s.performance === null || s.recorded < 2)) continue;
-    const a = ACTIVITY_BY_ID[id];
-    const vals = series.map((s) => s.performance as number);
+    if (series.some((s) => !s || s.performance === null || s.recorded < 2)) continue;
+    const a = cfg[id];
+    const vals = series.map((s) => s!.performance as number);
+    const evidence = vals.slice().reverse().map((v, i) => evLabels[i].replace("{p}", pct(v)));
     if (vals.every((v) => v < 100)) {
       recurring.push({
         id: `rw-${id}`, type: "recurring_weakness", activityId: id, domainId: a.domain, period: period.label, severity: "attention",
-        title: `${a.name} has remained below target for three consecutive ${unit}.`,
-        description: `Target: ${a.targetLabel}.`,
-        evidence: vals.slice().reverse().map((v, i) => `${i === 2 ? "Current" : `${2 - i} ${unit.slice(0, -1)}${i === 0 ? "s" : ""} ago`}: ${pct(v)}`),
+        title: t("ins.recWeak", { act: actName(a, t), units }), description: t("ins.targetDesc", { target: targetText(a, t) }), evidence,
       });
     } else if (vals.every((v) => v >= 100)) {
       recurring.push({
         id: `rs-${id}`, type: "recurring_strength", activityId: id, domainId: a.domain, period: period.label, severity: "positive",
-        title: `${a.name} has remained consistently on target for three ${unit}.`,
-        description: `Target: ${a.targetLabel}.`,
-        evidence: vals.slice().reverse().map((v, i) => `${i === 2 ? "Current" : `${2 - i} ${unit.slice(0, -1)}${i === 0 ? "s" : ""} ago`}: ${pct(v)}`),
+        title: t("ins.recStrong", { act: actName(a, t), units }), description: t("ins.targetDesc", { target: targetText(a, t) }), evidence,
       });
     }
   }
-  recurring.sort((x, y) => ACTIVITY_BY_ID[y.activityId!].weight - ACTIVITY_BY_ID[x.activityId!].weight);
+  recurring.sort((x, y) => cfg[y.activityId!].weight - cfg[x.activityId!].weight);
   out.push(...recurring.filter((r) => r.type === "recurring_weakness").slice(0, 2));
 
   // Standalone activity changes not already explained by a domain insight
@@ -136,26 +137,26 @@ export function generateInsights(period: Period, entries: Entries, today: string
     if (usedActivities.has(id)) continue;
     const delta = activityDelta(id);
     if (delta === null || Math.abs(delta) < TREND_THRESHOLD) continue;
-    if (domainChanges.some((x) => x.d.id === ACTIVITY_BY_ID[id].domain)) continue;
-    const a = ACTIVITY_BY_ID[id];
+    const a = cfg[id];
+    if (domainChanges.some((x) => x.d.id === a.domain)) continue;
     out.push({
       id: `${delta < 0 ? "ad" : "ai"}-${id}`, type: delta < 0 ? "activity_decline" : "activity_improvement", activityId: id, domainId: a.domain,
       period: period.label, severity: delta < 0 ? "attention" : "positive",
-      title: `${a.name} consistency ${delta < 0 ? "dropped" : "rose"} from ${pct(prev.activities[id].performance)} to ${pct(cur.activities[id].performance)}.`,
-      description: `Compared with ${prevWord}.`,
-      evidence: [`${prevWord}: ${pct(prev.activities[id].performance)}`, `${word}: ${pct(cur.activities[id].performance)}`],
+      title: t(delta < 0 ? "ins.actDown" : "ins.actUp", { act: actName(a, t), a: pct(perf(prev, id)), b: pct(perf(cur, id)) }),
+      description: t("ins.compared", { prev: prevWord }),
+      evidence: [`${prevWord}: ${pct(perf(prev, id))}`, `${word}: ${pct(perf(cur, id))}`],
     });
   }
 
   out.push(...recurring.filter((r) => r.type === "recurring_strength").slice(0, 2));
 
   if (c.strongest) {
-    const d = DOMAIN_BY_ID[c.strongest.id];
+    const id = c.strongest.id;
     out.push({
-      id: `sd-${d.id}`, type: "strongest_domain", domainId: d.id, period: period.label, severity: "positive",
-      title: `${d.name} is your strongest area ${word} at ${Math.round(c.strongest.score)}.`,
-      description: "Based on the activities you've recorded.",
-      evidence: activitiesFor(d.id).map((a) => `${a.name}: ${pct(cur.activities[a.id].performance)}`),
+      id: `sd-${id}`, type: "strongest_domain", domainId: id, period: period.label, severity: "positive",
+      title: t("ins.strongest", { domain: dn(id), period: word, n: Math.round(c.strongest.score) }),
+      description: t("ins.strongest.desc"),
+      evidence: inDomain(cur.list, id).map((a) => `${actName(a, t)}: ${pct(perf(cur, a.id))}`),
     });
   }
 
